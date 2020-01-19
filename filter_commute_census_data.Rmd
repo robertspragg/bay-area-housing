@@ -13,9 +13,9 @@ library(tidyverse)
 
 File Paths
 ```{r}
-fips_file <- "housing-jobs/commute_data/ca_county_fips_codes.csv"
-commute_file <- "housing-jobs/commute_data/commute_data.csv"
-tract_file <- "housing-jobs/commute_data/census_tracts_2010.csv"
+fips_file <- "census_data/ca_county_fips_codes.csv"  # source: https://www.nrcs.usda.gov/wps/portal/nrcs/detail/ca/home/?cid=nrcs143_013697
+commute_file <- "commutes/commute_data.csv"  # source: https://www.kaggle.com/figshare/united-states-commutes 
+tract_file <- "census_data/census_tracts_2010.csv"  # source: https://www.kaggle.com/figshare/united-states-commutes
 ```
 
 Constants
