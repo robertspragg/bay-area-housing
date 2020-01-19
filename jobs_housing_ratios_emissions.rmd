@@ -22,11 +22,11 @@ library(ggrepel)
 ```{r include = FALSE}
 
 county_bound_path <-
-  "housing-jobs/CA_counties_trimmed"
+  "county_bounds"
 # source: https://geodata.lib.berkeley.edu/catalog/ark28722-s7vp4m
 
 city_bound_path <-
-  "housing-jobs/CA_places"
+  "places_bounds"
 # source: https://data.ca.gov/dataset/ca-geographic-boundaries
 
 ca_county <-
@@ -50,36 +50,22 @@ bay_area_counties <-
 ```{r include = FALSE}
 ## MTC DATA
 mtc_taz_shp <-
-  "housing-jobs/mtc"
+  "mtc"
 mtc_taz_jobs <-
-  "housing-jobs/mtc/Plan_Bay_Area_2040_Forecast__Employment.csv"
+  "mtc/Plan_Bay_Area_2040_Forecast__Employment.csv"
 mtc_taz_land_use <-
-  "housing-jobs/mtc/Plan_Bay_Area_2040_Forecast__Land_Use_and_Transportation.csv"
+  "mtc/Plan_Bay_Area_2040_Forecast__Land_Use_and_Transportation.csv"
 mtc_taz_pop <-
-  "housing-jobs/mtc/Plan_Bay_Area_2040_Forecast__Population_and_Demographics.csv"
+  "mtc/Plan_Bay_Area_2040_Forecast__Population_and_Demographics.csv"
 
-## ADDITIONAL FILES FOR PART 2 (Census + Commute analysis)
-
-# 1. Santa Clara Census tract spatial data
-# scc_ct_path <-
-#   "../../../../../Box/DCL/spatial/census_tracts/santa_clara"
-
-# 2. San Mateo Census tract spatial data
-# smc_ct_path <-
-#   "../../../../../Box/DCL/spatial/census_tracts/san_mateo"
-
-# 3. SF census tract spatial data
-# sfc_ct_path <-
-#   "../../../../../Box/DCL/spatial/census_tracts/san_francisco"
-  
 # 4. Simplified commute data file 
 # Source: https://www.kaggle.com/figshare/united-states-commutes/version/1 
 bay_area_commute_path <-
-  "housing-jobs/commute_data/bay_area_commute_data.csv"
+  "commutes/bay_area_commute_data.csv"
 
 # 5. Census tract csv file (from kaggle as well)
 census_tracts_bay_area <-
-  "housing-jobs/commute_data/bay_area_census_tract_data.csv"
+  "census_data/bay_area_census_tract_data.csv"
 
 ```
 
@@ -462,36 +448,7 @@ jobs_housing_ratios %>%
   arrange(job_house_15)
 ```
 
-```{r, fig.height = 8}
 
-jobs_housing_ratios %>% 
-  filter(city_pop_15 >= 5000, job_house_15 > 0.8) %>% 
-  arrange(job_house_15) %>% ungroup() %>% 
-  mutate(name = fct_reorder(name, job_house_15)) %>% 
-  ggplot() +
-  #geom_segment(aes(x = job_house_05, y = name, xend = job_house_15, yend = name)) +
-  #geom_segment(aes(x = job_house_15, y = name, xend = job_house_30, yend = name)) +
-  geom_vline(xintercept = 1.25, linetype = "dashed", color = "black", size = 1) +
-  #geom_point(aes(x = job_house_05, y = name, size = city_pop_05), shape = 21, fill = "yellow") +
-  geom_point(aes(x = job_house_15, y = reorder(name, job_house_15), size = city_pop_15), shape = 21, fill = "red") +
-  geom_point(aes(x = job_house_30, y = name, size = city_pop_30), shape = 21, fill = "blue") +
-  annotate("text", x = 3, y = "Tiburon", label = "Optimal value: 1.25") +
-  scale_size_continuous(
-    breaks = c(1000000, 300000, 100000, 50000, 5000),
-    labels = scales::comma_format(accuracy = 1),
-    range = c(2, 6)
-  ) +
-  theme(
-    axis.text.y = element_text(size = 6)
-  ) +
-  labs(
-    x = "Jobs per housing unit",
-    y = "City Name",
-    title = "The distribution of job-housing ratios across the Bay Area",
-    subtitle = "Data sorted by 2015 jobs-housing ratio \nYellow = 2005; Red = 2015; Blue = 2030",
-    size = "City Population"
-  )
-```
 
 Figure showing 2015 jobs-housing ratios
 ```{r, fig.height = 10}
@@ -672,7 +629,6 @@ Let's create a spatial visualization of the housing shortage.
 
 ```{r, fig.height = 8}
 NYT_DEM <- "#1A80C4"
-    # For states won by Republican
 NYT_REP <- "#CC3D41"
 light_red <- "#FDB8A9"
 dark_red <- "#9C2A12"
@@ -839,12 +795,6 @@ flow_by_csa_city <-
 flow_by_csa_city
 ```
 
-```{r}
-# flow_by_csa_city <-
-#   flow_data %>% 
-#   st_as_sf(coords = c("INTPTLONG", "INTPTLAT"), crs = 4326) %>% 
-#   st_join(csa_cities_cleaned %>% st_as_sf)
-```
 
 Now, we can see the imbalance by city! To ensure I account for all flows I will use the st_nearest feature to identify the closest community to each census tract centerpoint.
 
@@ -948,173 +898,7 @@ flow_data %>%
 
 ```
 
-Read in the census tract shapefile for Santa Clara County.
-```{r}
-scc_ct <-
-  read_sf(dsn = scc_ct_path, layer = "tl_2010_06085_tract10")
 
-glimpse(scc_ct)
-```
-
-Let's join the census data with our joined MTC and city boundary data. Now, we know
-approximately which census tract corresponds to which city.
-
-```{r}
-census_joined_scc <-
-  scc_ct %>% 
-  select(GEOID10, INTPTLAT10, INTPTLON10, geometry) %>% 
-  st_transform(4326) %>% 
-  st_join(mtc_city_joined, largest = TRUE)
-```
-
-We're interested in observing the commute flows into and out of Santa Clara 
-county.
-
-
-Merge the commute data with the census_joined file by the `DFIPS` column to see
-all of the origins, as well as the mean distance traveled from each county.
-
-```{r}
-scc_origins <-
-  bay_area_commutes %>% 
-  left_join(census_joined_scc, by = c("DFIPS" = "GEOID10")) %>% 
-  filter(end_county == "Santa Clara") %>% 
-  group_by(NAME, start_county) %>% 
-  summarize(
-    flow_to_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-scc_origins
-```
-
-We can take the weighted average from each county to estimate the average 
-commute distance into each city.
-
-```{r}
-distance_flow_to_scc <-
-  scc_origins %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_to_city = weighted.mean(mean_distance, flow_to_city),
-    trips_to_city = sum(flow_to_city)
-  )
-
-distance_flow_to_scc %>% 
-  rename(
-    Name = NAME,
-    `Avg. distance to city` = mean_distance_to_city,
-    `No. Trips` = trips_to_city
-  ) %>% 
-  kable()
-```
-
-Compare the flows in and out of Santa Clara County
-
-```{r}
-# use ofips instead of dfips for trips that start in SCC
-scc_start_city <-
-  bay_area_commutes %>% 
-  left_join(census_joined_scc, by = c("OFIPS" = "GEOID10")) %>% 
-  filter(start_county == "Santa Clara") %>% 
-  group_by(NAME, end_county) %>% 
-  summarize(
-    flow_from_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-```
-
-
-```{r}
-distance_flow_from_scc <-
-  scc_start_city %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_from_city = weighted.mean(mean_distance, flow_from_city),
-    trips_from = sum(flow_from_city)
-  )  
-
-distance_flow_from_scc %>% 
-  rename(
-    Name = NAME,
-    `Avg. distance from city` = mean_distance_from_city,
-    `No. Trips` = trips_from
-  ) %>% 
-  kable()
-```
-
-Commutes that end in most Santa Clara county cities tend to be longer
-than commutes that residents of those cities have. This is another way to observe 
-where job-rich communities are located.
-
-When estimating the emissions associated with the housing-jobs mismatch, it is
-important to understand the net inflow of commuters into the region.
-
-```{r}
-scc_net_inflow <-
-  distance_flow_to_scc %>% summarize(total = sum(trips_to_city)) - 
-  distance_flow_from_scc %>% summarize(total = sum(trips_from))
-
-pull(scc_net_inflow)
-```
-
-Santa Clara County has a net influx of approximately **90,000** commuters each day.
-This is close to the value of 100,000 reported by Silicon Valley @ Home.[^33]
-
-Let's estimate the total VMT caused by this net inflow. Remember to convert the
-distance from kilometers to miles. Assume approximately 80% of inflow commutes
-are by car.[^9]
-
-```{r}
-scc_summary_info <-
-  distance_flow_from_scc %>% 
-  left_join(distance_flow_to_scc, by = c("NAME")) %>% 
-  mutate(net_influx = trips_to_city - trips_from) %>% 
-  mutate(influx_VMT = mean_distance_to_city * 0.62 * net_influx * 0.8)
-
-scc_summary_info 
-
-scc_summary_info %>% 
-  summarize(
-    sum = sum(influx_VMT)
-  ) %>% pull()
-```
-
-The net influx of commutes into Palo Alto is causing approximately **500,000** VMT
-each workday (1,000,000 VMT roundtrip)! The total VMT influx into the county is 
-approximately 830,000 miles when including negative values from cities such as 
-San Jose. 
-
-Given that the average passenger vehicle emits approximately 404 grams of carbon
-dioxide per mile, 1 million miles is equivalent to 404 metric tons of carbon
-dioxide per day. Assuming 250 working days per year, this is equivalent to 
-**101,000 metric tons annually.** [^78]
-
-We can visualize the difference in commute length for residents commuting 
-into and out of each Santa Clara County city.
-
-```{r}
-scc_summary_info %>% 
-  ggplot() +
-  geom_segment(aes(x = NAME, xend = NAME, y = mean_distance_from_city, yend = mean_distance_to_city)) +
-  geom_point(aes(x = NAME, y = mean_distance_from_city, color = "From City", size = trips_from)) +
-  geom_point(aes(x = NAME, y = mean_distance_to_city, color = "To City", size = trips_to_city)) +
-  scale_size_continuous(
-    breaks = c(1000, 10000, 50000, 100000, 300000),
-    labels = scales::comma_format(accuracy = 1),
-    range = c(1, 8) 
-  ) +
-  coord_flip() +
-  theme_minimal() +
-  labs(
-    x = "City Name",
-    y = "Weighted mean commuting distance [km]",
-    color = "Flow Direction",
-    size = "Flow Size",
-    subtitle = "Residents of job-rich communities have shorter average commutes"
-  )
-```
 
 **Emissions Impact of Adding Housing near Jobs**
 
@@ -1130,176 +914,6 @@ local traffic could also be mitigated.
 We can repeat our Santa Clara County analysis for San Francisco and San Mateo 
 counties.
 
-**San Mateo County**
-```{r}
-# San Mateo
-smc_ct <-
-  read_sf(dsn = smc_ct_path, layer = "tl_2010_06081_tract10")
-
-# San Francisco
-sfc_ct <-
-  read_sf(dsn = sfc_ct_path, layer = "tl_2010_06075_tract10")
-
-
-```
-
-```{r}
-census_joined_smc <-
-  smc_ct %>% 
-  select(GEOID10, INTPTLAT10, INTPTLON10, geometry) %>% 
-  st_transform(4326) %>% 
-  st_join(mtc_city_joined, largest = TRUE)
-
-smc_origins <-
-  bay_area_commutes %>% 
-  left_join(census_joined_smc, by = c("DFIPS" = "GEOID10")) %>% 
-  filter(end_county == "San Mateo") %>% 
-  group_by(NAME, start_county) %>% 
-  summarize(
-    flow_to_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-smc_origins
-```
-
-```{r, echo = FALSE}
-distance_flow_to_smc <-
-  smc_origins %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_to_city = weighted.mean(mean_distance, flow_to_city),
-    trips_to_city = sum(flow_to_city)
-  )
-
-# use ofips instead of dfips for trips that start in SCC
-smc_start_city <-
-  bay_area_commutes %>% 
-  left_join(census_joined_smc, by = c("OFIPS" = "GEOID10")) %>% 
-  filter(start_county == "San Mateo") %>% 
-  group_by(NAME, end_county) %>% 
-  summarize(
-    flow_from_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-distance_flow_from_smc <-
-  smc_start_city %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_from_city = weighted.mean(mean_distance, flow_from_city),
-    trips_from = sum(flow_from_city)
-  )  
-
-distance_flow_to_smc %>% 
-  rename(
-    Name = NAME,
-    `Mean Distance` = mean_distance_to_city,
-    `No. Trips` = trips_to_city
-  ) %>% 
-  kable()
-```
-
-We assign a slighly lower ratio (75%) to commutes by vehicle for San Mateo County.
-```{r}
-smc_summary_info <-
-  distance_flow_from_smc %>% 
-  left_join(distance_flow_to_smc, by = c("NAME")) %>% 
-  mutate(net_influx = trips_to_city - trips_from) %>% 
-  mutate(influx_VMT = mean_distance_to_city * 0.62 * net_influx * 0.75)
-
-smc_summary_info %>% 
-  summarize(
-    sum = sum(influx_VMT)
-  ) %>% pull()
-```
-
-San Mateo County's VMT is less imbalanced, at approximately 200,000 VMT per direction 
-per day. This corresponds to 40,000 metric tons of carbon dioxide annually.
-
-**San Francisco**
-
-We assign a driving ratio of 60% to San Francisco.
-
-```{r}
-census_joined_sfc <-
-  sfc_ct %>% 
-  select(GEOID10, INTPTLAT10, INTPTLON10, geometry) %>% 
-  st_transform(4326) %>% 
-  st_join(mtc_city_joined, largest = TRUE)
-
-sfc_origins <-
-  bay_area_commutes %>% 
-  left_join(census_joined_sfc, by = c("DFIPS" = "GEOID10")) %>% 
-  filter(end_county == "San Francisco") %>% 
-  group_by(NAME, start_county) %>% 
-  summarize(
-    flow_to_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-sfc_origins %>% 
-  rename(
-    Name = NAME,
-    `Origin County` = start_county,
-    `No. Trips` = flow_to_city,
-    `Mean Distance` = mean_distance
-  ) %>% kable()
-
-distance_flow_to_sfc <-
-  sfc_origins %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_to_city = weighted.mean(mean_distance, flow_to_city),
-    trips_to_city = sum(flow_to_city)
-  )
-
-
-```
-
-```{r, echo = FALSE}
-# use ofips instead of dfips for trips that start in SCC
-sfc_start_city <-
-  bay_area_commutes %>% 
-  left_join(census_joined_sfc, by = c("OFIPS" = "GEOID10")) %>% 
-  filter(start_county == "San Francisco") %>% 
-  group_by(NAME, end_county) %>% 
-  summarize(
-    flow_from_city = sum(FLOW),
-    mean_distance = weighted.mean(LENKM, FLOW, na.rm = TRUE)
-  )
-
-distance_flow_from_sfc <-
-  sfc_start_city %>% 
-  group_by(NAME) %>% 
-  summarize(
-    mean_distance_from_city = weighted.mean(mean_distance, flow_from_city),
-    trips_from = sum(flow_from_city)
-  )  
-
-distance_flow_to_sfc %>% kable()
-```
-
-```{r}
-sfc_summary_info <-
-  distance_flow_from_sfc %>% 
-  left_join(distance_flow_to_sfc, by = c("NAME")) %>% 
-  mutate(net_influx = trips_to_city - trips_from) %>% 
-  mutate(influx_VMT = mean_distance_to_city * 0.62 * net_influx * 0.6)
-
-sfc_summary_info %>% 
-  summarize(
-    sum = sum(influx_VMT)
-  ) %>% pull()
-
-```
-
-The San Francisco VMT is the most imbalanced of all, at over 850,000 miles 
-traveled one way each work day, or 170,000 metric tons of carbon dioxide annually.
-
-In addition, it's important to remember that vehicles also emit nitrogen oxide (NOx) and other 
-pollutants which increase ozone levels, particulate matter concentrations, both
-of which increase the risk of asthma and other illnesses.
 
 We can also clearly see the Central Valley supercommuters in the San Francisco dataset.
 
