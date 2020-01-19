@@ -1,0 +1,81 @@
+---
+title: "filter_commute_data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+File Paths
+```{r}
+fips_file <- "housing-jobs/commute_data/ca_county_fips_codes.csv"
+commute_file <- "housing-jobs/commute_data/commute_data.csv"
+tract_file <- "housing-jobs/commute_data/census_tracts_2010.csv"
+```
+
+Constants
+```{r}
+bay_area_counties <-
+  c("Alameda", "Contra Costa", "Marin", "Merced", 
+    "Napa", "San Benito", "San Francisco", 
+    "San Joaquin", "San Mateo", "Santa Clara",
+    "Santa Cruz", "Solano", "Sonoma", 
+    "Stanislaus"
+  )
+bay_area_fips <- c()
+```
+
+Read in top of commute file. Observe columns
+```{r}
+commute_data <-
+  read_csv(commute_file, n_max = 100)
+
+commute_data
+```
+
+# Start by filtering for commutes that start and end in California
+```{r}
+ca_commutes <-
+  read_csv(commute_file) %>% 
+  filter(OSTFIPS == 6, DSTFIPS == 6)
+```
+
+# Next, filter for commutes that start and end in the 14-county region
+```{r}
+fips_data <- read_csv(fips_file) 
+bay_area_csa_fips <- 
+  fips_data %>%
+  filter(County %in% bay_area_counties)
+  
+
+bay_area_csa_commutes <-
+  ca_commutes %>% 
+  filter(OCTFIPS %in% bay_area_csa_fips$`County FIPS Code`, DCTFIPS %in% bay_area_csa_fips$`County FIPS Code`)
+```
+
+#Save Bay Area commutes data to csv
+```{r}
+bay_area_csa_commutes %>% 
+  write_csv('bay_area_commute_data.csv')
+```
+
+#Filter for Census Tracts in the 14-county region
+```{r}
+# the county codes are the third, fourth, and fifth digits
+tract_data <- read_csv(tract_file) %>% 
+  mutate(county_code = str_sub(GEOID, 3, 5)) %>%
+  mutate(county_code = as.integer(county_code)) %>% 
+  left_join(bay_area_csa_fips, by = c("county_code" = "County FIPS Code")) %>% 
+  filter(USPS == "CA", county_code %in% bay_area_csa_fips$`County FIPS Code`)
+```
+
+```{r}
+tract_data %>% 
+  write_csv('bay_area_census_tracts.csv')
+```
+
