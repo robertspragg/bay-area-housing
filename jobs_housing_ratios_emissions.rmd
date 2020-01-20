@@ -1,7 +1,7 @@
 ---
-title: "Final report: Housing-Jobs Mismatch"
+title: "Housing Jobs Mismatch and Associated Emissions Impacts"
 author: "Robert Spragg"
-date: 2019-06-04
+date: 2020-01-19
 output: 
   github_document:
     toc: true
@@ -17,6 +17,7 @@ library(knitr)
 library(tidyverse)
 library(sf)
 library(ggrepel)
+library(scales)
 ```
 
 ```{r include = FALSE}
@@ -477,7 +478,7 @@ jobs_housing_ratios %>%
 ```
 
 Figure showing 2015 and 2030 jobs-housing ratios
-```{r, fig.height = 8}
+```{r, fig.height = 10}
 jobs_housing_ratios %>% 
   filter(job_house_15 > 0.9, city_pop_15 > 4000) %>% 
   ggplot() +
@@ -506,7 +507,7 @@ jobs_housing_ratios %>%
 
 One can also facet by county to see if any county-specific trends appear.
 
-```{r, fig.height = 10}
+```{r, fig.height = 15}
 jobs_housing_ratios %>% 
   mutate(name = fct_reorder(name, job_house_15)) %>%  
   filter(city_pop_15 >= 4000) %>% 
@@ -724,7 +725,7 @@ inflows <-
   group_by(DFIPS) %>% 
   summarize(
     total_flow_to_tract = sum(FLOW),
-    avg_km_to_tract = weighted.mean(FLOW, LENKM)
+    avg_km_to_tract = weighted.mean(LENKM, FLOW)
   )
 
 outflows <-
@@ -733,7 +734,7 @@ outflows <-
   group_by(OFIPS) %>% 
   summarize(
     total_flow_from_tract = sum(FLOW),
-    avg_km_from_tract = weighted.mean(FLOW, LENKM)
+    avg_km_from_tract = weighted.mean(LENKM, FLOW)
   )
 
 # Finally, join together, rename to "TRACT", and join with county data
@@ -745,6 +746,48 @@ flow_data <-
   # left_join(bay_area_tract_data, by = c("tract" = "GEOID")) 
 
 flow_data
+```
+
+Let's also make a flow matrix (heat-map) for the 14-county region.
+```{r}
+flow_matrix <-
+  bay_area_commutes %>% 
+  left_join(bay_area_tract_data, by = c("OFIPS" = "GEOID")) %>% 
+  rename(origin_lat = INTPTLAT, origin_lon = INTPTLONG, origin_county_code = county_code, origin_county = County) %>% 
+  left_join(bay_area_tract_data, by = c("DFIPS" = "GEOID")) %>% 
+  rename(dest_lat = INTPTLAT, dest_lon = INTPTLONG, dest_county_code = county_code, dest_county = County) %>% 
+  group_by(origin_county, dest_county) %>% 
+  summarize(flow = sum(FLOW),
+            avg_length_km = weighted.mean(LENKM, FLOW)) 
+
+flow_matrix
+```
+
+```{r, fig.height=11, fig.width=11}
+
+my_breaks = c(10, 100, 1000, 10000, 100000, 1E6)
+              
+flow_matrix %>% 
+  ggplot() +
+  geom_tile(aes(x = origin_county, y = reorder(dest_county, desc(dest_county)), fill = flow)) +
+  geom_text(aes(x = origin_county, y = reorder(dest_county, desc(dest_county)), label = flow)) +
+  scale_fill_gradient(low = "white", high = "orange", trans = "log", breaks = my_breaks, labels = comma) +
+  scale_x_discrete(position = "top") +
+  coord_equal() +
+  labs(
+    x = "Origin County",
+    y = "Destination County",
+    fill = "Total Commute Flow"
+  )
+```
+
+```{r}
+bay_area_commutes %>% 
+  left_join(bay_area_tract_data, by = c("OFIPS" = "GEOID")) %>% 
+  rename(origin_lat = INTPTLAT, origin_lon = INTPTLONG, origin_county_code = county_code, origin_county = County) %>% 
+  left_join(bay_area_tract_data, by = c("DFIPS" = "GEOID")) %>% 
+  rename(dest_lat = INTPTLAT, dest_lon = INTPTLONG, dest_county_code = county_code, dest_county = County) %>% 
+  filter(origin_county == "Alameda", dest_county == "San Benito")
 ```
 
 Next, let's observe the total inflows and outflows from each county. We can calculate the imbalance as well. A positive imbalance means more people commute to that county than from it. I'll refer to this as net inflow.
@@ -767,7 +810,7 @@ San Francisco has the highest net inflow, at 153,600 commutes, followed by Santa
 For this study, I will assign the emissions impact to the counties / communities with a net inflow of commuters. This implies that jobs cannot be simply relocated to other cities, but rather that job-rich, wealthy communities need to do more to tackle the emissions associated with commutes into their city. Furthermore, job-rich communities often have the highest GHG reduction targets in their climate action plans. I want to make sure that they are not excluding the emissions associated with these commutes.
 
 
-```{r}
+```{r, fig.height = 10}
 csa_cities_cleaned %>% 
   ggplot() +
   geom_sf() + 
@@ -959,34 +1002,3 @@ housing predicament.
 [^14]: https://www.epa.gov/greenvehicles/greenhouse-gas-emissions-typical-passenger-vehicle 
 
 ## Appendix
-
-**Comparison to Silicon Valley @ Home Data **
-The following table shows the housing data estimated by SV @ Home.[^7]
-
-```{r echo = FALSE}
-knitr::kable(sv_home)
-```
-
-## Brainstorming
-```{r}
-places <- read_sf("../../../housing-jobs/CA_places") %>% st_transform(crs = 4326)
-ggplot() +
-  geom_sf(data = ca_county) +
-  geom_sf(
-    aes(fill = NAME),
-    data = places
-  ) 
-
-```
-
-```{r}
-ggplot() +
-  geom_sf(aes(fill = COUNTY_NAM),
-          data = csa_counties) +
-  theme(legend.position = "none")
-```
-
-```{r}
-places %>% view()
-```
-

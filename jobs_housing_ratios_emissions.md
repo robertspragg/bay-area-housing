@@ -1,7 +1,7 @@
-Final report: Housing-Jobs Mismatch
+Housing Jobs Mismatch and Associated Emissions Impacts
 ================
 Robert Spragg
-2019-06-04
+2020-01-19
 
   - [Abstract](#abstract)
   - [Introduction](#introduction)
@@ -888,7 +888,7 @@ inflows <-
   group_by(DFIPS) %>% 
   summarize(
     total_flow_to_tract = sum(FLOW),
-    avg_km_to_tract = weighted.mean(FLOW, LENKM)
+    avg_km_to_tract = weighted.mean(LENKM, FLOW)
   )
 
 outflows <-
@@ -897,7 +897,7 @@ outflows <-
   group_by(OFIPS) %>% 
   summarize(
     total_flow_from_tract = sum(FLOW),
-    avg_km_from_tract = weighted.mean(FLOW, LENKM)
+    avg_km_from_tract = weighted.mean(LENKM, FLOW)
   )
 
 # Finally, join together, rename to "TRACT", and join with county data
@@ -914,18 +914,91 @@ flow_data
     ## # A tibble: 1,923 x 9
     ##    tract total_flow_to_t… avg_km_to_tract total_flow_from… avg_km_from_tra…
     ##    <chr>            <dbl>           <dbl>            <dbl>            <dbl>
-    ##  1 0600…             1322            18.5             1364             17.2
-    ##  2 0600…             2169            20.0             1169             16.5
-    ##  3 0600…             3427            21.3             2646             22.0
-    ##  4 0600…             1313            20.2             2335             19.3
-    ##  5 0600…              657            19.6             2087             16.4
-    ##  6 0600…              249            20.2              817             17.9
-    ##  7 0600…             1422            20.1             1771             19.7
-    ##  8 0600…             1351            17.5             1409             16.2
-    ##  9 0600…              349            20.2             1270             21.4
-    ## 10 0600…             3137            18.6             2755             31.6
+    ##  1 0600…             1322            17.2             1364            14.5 
+    ##  2 0600…             2169            14.1             1169             9.56
+    ##  3 0600…             3427            12.2             2646            10.4 
+    ##  4 0600…             1313            10.1             2335             9.66
+    ##  5 0600…              657            11.0             2087            10.8 
+    ##  6 0600…              249            13.8              817            12.9 
+    ##  7 0600…             1422            15.3             1771            10.5 
+    ##  8 0600…             1351            15.4             1409            11.0 
+    ##  9 0600…              349            21.3             1270            10.4 
+    ## 10 0600…             3137            20.6             2755            11.0 
     ## # … with 1,913 more rows, and 4 more variables: INTPTLAT <dbl>,
     ## #   INTPTLONG <dbl>, county_code <dbl>, County <chr>
+
+Let’s also make a flow matrix (heat-map) for the 14-county region.
+
+``` r
+flow_matrix <-
+  bay_area_commutes %>% 
+  left_join(bay_area_tract_data, by = c("OFIPS" = "GEOID")) %>% 
+  rename(origin_lat = INTPTLAT, origin_lon = INTPTLONG, origin_county_code = county_code, origin_county = County) %>% 
+  left_join(bay_area_tract_data, by = c("DFIPS" = "GEOID")) %>% 
+  rename(dest_lat = INTPTLAT, dest_lon = INTPTLONG, dest_county_code = county_code, dest_county = County) %>% 
+  group_by(origin_county, dest_county) %>% 
+  summarize(flow = sum(FLOW),
+            avg_length_km = weighted.mean(LENKM, FLOW)) 
+
+flow_matrix
+```
+
+    ## # A tibble: 181 x 4
+    ## # Groups:   origin_county [14]
+    ##    origin_county dest_county     flow avg_length_km
+    ##    <chr>         <chr>          <dbl>         <dbl>
+    ##  1 Alameda       Alameda       466743          9.81
+    ##  2 Alameda       Contra Costa   39867         23.5 
+    ##  3 Alameda       Marin           3716         37.4 
+    ##  4 Alameda       Merced           133        134.  
+    ##  5 Alameda       Napa             541         72.1 
+    ##  6 Alameda       San Benito       110        105.  
+    ##  7 Alameda       San Francisco  71718         23.5 
+    ##  8 Alameda       San Joaquin     1853         60.6 
+    ##  9 Alameda       San Mateo      34254         26.6 
+    ## 10 Alameda       Santa Clara    64447         28.2 
+    ## # … with 171 more rows
+
+``` r
+my_breaks = c(10, 100, 1000, 10000, 100000, 1E6)
+              
+flow_matrix %>% 
+  ggplot() +
+  geom_tile(aes(x = origin_county, y = reorder(dest_county, desc(dest_county)), fill = flow)) +
+  geom_text(aes(x = origin_county, y = reorder(dest_county, desc(dest_county)), label = flow)) +
+  scale_fill_gradient(low = "white", high = "orange", trans = "log", breaks = my_breaks, labels = comma) +
+  scale_x_discrete(position = "top") +
+  coord_equal() +
+  labs(
+    x = "Origin County",
+    y = "Destination County",
+    fill = "Total Commute Flow"
+  )
+```
+
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-35-1.png)<!-- -->
+
+``` r
+bay_area_commutes %>% 
+  left_join(bay_area_tract_data, by = c("OFIPS" = "GEOID")) %>% 
+  rename(origin_lat = INTPTLAT, origin_lon = INTPTLONG, origin_county_code = county_code, origin_county = County) %>% 
+  left_join(bay_area_tract_data, by = c("DFIPS" = "GEOID")) %>% 
+  rename(dest_lat = INTPTLAT, dest_lon = INTPTLONG, dest_county_code = county_code, dest_county = County) %>% 
+  filter(origin_county == "Alameda", dest_county == "San Benito")
+```
+
+    ## # A tibble: 5 x 20
+    ##   OFIPS DFIPS OSTFIPS OCTFIPS OTRFIPS DSTFIPS DCTFIPS DTRFIPS  FLOW   MOE
+    ##   <chr> <chr>   <dbl>   <dbl>   <dbl>   <dbl>   <dbl>   <dbl> <dbl> <dbl>
+    ## 1 0600… 0606…       6       1  435601       6      69     100    35    56
+    ## 2 0600… 0606…       6       1  430500       6      69     200    25    45
+    ## 3 0600… 0606…       6       1  443104       6      69     100    20    35
+    ## 4 0600… 0606…       6       1  451703       6      69     600    20    30
+    ## 5 0600… 0606…       6       1  404600       6      69     400    10    18
+    ## # … with 10 more variables: LENKM <dbl>, ESTDIVMOE <dbl>,
+    ## #   origin_lat <dbl>, origin_lon <dbl>, origin_county_code <dbl>,
+    ## #   origin_county <chr>, dest_lat <dbl>, dest_lon <dbl>,
+    ## #   dest_county_code <dbl>, dest_county <chr>
 
 Next, let’s observe the total inflows and outflows from each county. We
 can calculate the imbalance as well. A positive imbalance means more
@@ -946,20 +1019,20 @@ flow_data %>%
     ## # A tibble: 14 x 6
     ##    County total_flow_to_c… total_flow_from… avg_commute_to_…
     ##    <chr>             <dbl>            <dbl>            <dbl>
-    ##  1 Alame…           688310           687048             21.7
-    ##  2 Contr…           362585           460990             22.1
-    ##  3 Marin            121721           119677             21.6
-    ##  4 Merced            74946            86866             27.8
-    ##  5 Napa              66258            61375             23.5
-    ##  6 San B…            14303            20102             25.4
-    ##  7 San F…           582779           429179             26.2
-    ##  8 San J…           216262           248733             23.0
-    ##  9 San M…           344495           345043             20.5
-    ## 10 Santa…           898668           809041             22.9
-    ## 11 Santa…            99957           114957             26.9
-    ## 12 Solano           127194           172760             24.0
-    ## 13 Sonoma           200953           223059             26.5
-    ## 14 Stani…           178004           195597             26.5
+    ##  1 Alame…           688310           687048             18.1
+    ##  2 Contr…           362585           460990             15.5
+    ##  3 Marin            121721           119677             16.9
+    ##  4 Merced            74946            86866             12.9
+    ##  5 Napa              66258            61375             14.9
+    ##  6 San B…            14303            20102             15.4
+    ##  7 San F…           582779           429179             15.0
+    ##  8 San J…           216262           248733             13.9
+    ##  9 San M…           344495           345043             17.8
+    ## 10 Santa…           898668           809041             16.8
+    ## 11 Santa…            99957           114957             10.7
+    ## 12 Solano           127194           172760             14.1
+    ## 13 Sonoma           200953           223059             13.2
+    ## 14 Stani…           178004           195597             12.3
     ## # … with 2 more variables: avg_commute_from_county <dbl>, imbalance <dbl>
 
 San Francisco has the highest net inflow, at 153,600 commutes, followed
@@ -989,7 +1062,7 @@ csa_cities_cleaned %>%
   theme_bw()
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-35-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-38-1.png)<!-- -->
 
 Let’s join the flow data with the csa\_cities\_data. To ensure I account
 for all flows I will use the st\_nearest feature to identify the closest
@@ -1119,16 +1192,16 @@ commute_flow_imbalance_by_city
     ## # Groups:   NAME [337]
     ##    NAME  County flow_to_city flow_from_city commute_length_…
     ##    <chr> <chr>         <dbl>          <dbl>            <dbl>
-    ##  1 San … San F…       582779         429179             26.2
-    ##  2 Sant… Santa…        92537          53620             27.0
-    ##  3 Stan… Santa…        41972           7760             22.9
-    ##  4 Moun… Santa…        65845          37767             22.4
-    ##  5 Waln… Contr…        55579          30833             24.3
-    ##  6 Berk… Alame…        71753          49905             19.7
-    ##  7 Plea… Alame…        49218          28060             22.8
-    ##  8 Palo… Santa…        47637          28199             20.4
-    ##  9 Oakl… Alame…       192933         176578             20.5
-    ## 10 Mill… San M…        25724           9461             21.5
+    ##  1 San … San F…       582779         429179             15.0
+    ##  2 Sant… Santa…        92537          53620             16.8
+    ##  3 Stan… Santa…        41972           7760             19.0
+    ##  4 Moun… Santa…        65845          37767             18.8
+    ##  5 Waln… Contr…        55579          30833             15.5
+    ##  6 Berk… Alame…        71753          49905             12.6
+    ##  7 Plea… Alame…        49218          28060             21.9
+    ##  8 Palo… Santa…        47637          28199             18.0
+    ##  9 Oakl… Alame…       192933         176578             17.3
+    ## 10 Mill… San M…        25724           9461             24.0
     ## # … with 360 more rows, and 5 more variables:
     ## #   commute_length_from_city <dbl>, emissions_per_mile <dbl>,
     ## #   imbalance <dbl>, daily_commute_emissions <dbl>,
@@ -1158,7 +1231,7 @@ deficit_imbalance <-
   )
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-39-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
 
 # Emissions Estimate
 
@@ -1180,7 +1253,7 @@ commute_flow_imbalance_by_city %>%
     ## # A tibble: 1 x 1
     ##   total_emissions_imbalance
     ##                       <dbl>
-    ## 1               2252487500.
+    ## 1               1576740115.
 
 Less Simplified Version (TBD)
 
@@ -1197,7 +1270,7 @@ flow_by_csa_city %>%
   geom_sf()
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-44-1.png)<!-- -->
 
 ``` r
 flow_data %>% 
@@ -1209,16 +1282,16 @@ flow_data %>%
     ## # A tibble: 1,923 x 10
     ##    tract total_flow_to_t… avg_km_to_tract total_flow_from… avg_km_from_tra…
     ##    <chr>            <dbl>           <dbl>            <dbl>            <dbl>
-    ##  1 0600…             1322            18.5             1364             17.2
-    ##  2 0600…             2169            20.0             1169             16.5
-    ##  3 0600…             3427            21.3             2646             22.0
-    ##  4 0600…             1313            20.2             2335             19.3
-    ##  5 0600…              657            19.6             2087             16.4
-    ##  6 0600…              249            20.2              817             17.9
-    ##  7 0600…             1422            20.1             1771             19.7
-    ##  8 0600…             1351            17.5             1409             16.2
-    ##  9 0600…              349            20.2             1270             21.4
-    ## 10 0600…             3137            18.6             2755             31.6
+    ##  1 0600…             1322            17.2             1364            14.5 
+    ##  2 0600…             2169            14.1             1169             9.56
+    ##  3 0600…             3427            12.2             2646            10.4 
+    ##  4 0600…             1313            10.1             2335             9.66
+    ##  5 0600…              657            11.0             2087            10.8 
+    ##  6 0600…              249            13.8              817            12.9 
+    ##  7 0600…             1422            15.3             1771            10.5 
+    ##  8 0600…             1351            15.4             1409            11.0 
+    ##  9 0600…              349            21.3             1270            10.4 
+    ## 10 0600…             3137            20.6             2755            11.0 
     ## # … with 1,913 more rows, and 5 more variables: INTPTLAT <dbl>,
     ## #   INTPTLONG <dbl>, county_code <dbl>, County <chr>, index <int>
 
