@@ -730,7 +730,7 @@ inflows <-
 # To find the outflows, group by OFIPS
 outflows <-
   bay_area_commutes %>% 
-  mutate(total_trip_km = FLOW * LENKM) %>% 
+  mutate(total_trip_km = FLOW * LENKM) %>% # note, this includes commutes that start and end in same tract!
   group_by(OFIPS) %>% 
   summarize(
     total_flow_from_tract = sum(FLOW),
@@ -853,6 +853,8 @@ inter_county_dest <-
     total_flow_into_county = sum(FLOW, na.rm = TRUE),
     avg_commute_to_county_km = weighted.mean(LENKM, FLOW, na.rm = TRUE)
   )
+
+flow_matrix_detailed
 ```
 
 Let's also look at the commutes from each county
@@ -932,7 +934,7 @@ csa_cities_cleaned_idx <-
   csa_cities_cleaned %>% 
   mutate(index = row_number())
 
-# running this next chunk takes a long time (2 mins ish)
+csa_cities_cleaned_idx
 flow_data_idx <-
   flow_data %>% 
   mutate(index = st_nearest_feature(flow_data %>% st_as_sf(coords = c("INTPTLONG", "INTPTLAT"), crs = 4326), csa_cities_cleaned %>% st_as_sf))
@@ -947,34 +949,67 @@ flow_by_csa_city
 ```
 
 
+```{r}
+# New version, use flow_matrix_detailed! 
+csa_cities_cleaned_idx <-
+  csa_cities_cleaned %>% 
+  mutate(index = row_number())
+
+# running this next chunk takes a long time (2 mins ish)
+# find the origin and destination city index for each tract
+flow_data_origin_city <-
+  flow_matrix_detailed %>% 
+  mutate(origin_index = st_nearest_feature(flow_matrix_detailed %>%  st_as_sf(coords = c("origin_lon", "origin_lat"), crs = 4326), csa_cities_cleaned %>% st_as_sf)) %>% 
+  mutate(dest_index = st_nearest_feature(flow_matrix_detailed %>%  st_as_sf(coords = c("dest_lon", "dest_lat"), crs = 4326), csa_cities_cleaned %>% st_as_sf))
+
+flow_by_csa_city_detailed <-
+  csa_cities_cleaned_idx %>% 
+  rename(origin_city = NAME) %>% 
+  select(origin_city, index) %>% 
+  # join city data with flow data to get the origin city name
+  left_join(flow_data_origin_city, by = c("index" = "origin_index")) %>% 
+  # join the flow data with city data to get destination city name
+  left_join(csa_cities_cleaned_idx %>% rename(dest_city = NAME) %>% select(dest_city, index) %>% st_drop_geometry(), by = c("dest_index" = "index"))
+
+flow_by_csa_city_detailed
+```
+
+
+```{r}
+bay_area_commutes %>% 
+  summarize(flow_total = sum(FLOW))
+
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  summarize(flow_total = sum(FLOW))
+
+```
+
 Now, we can see the imbalance by city! To ensure I account for all flows I will use the st_nearest feature to identify the closest community to each census tract centerpoint.
 
 Emissions Per Mile and Driving Mode Share
 ```{r}
 emissions_tibble = tribble(
-  ~County, ~emis_factor_lb_per_mile,
-  "Alameda", 0.48,
-  "Contra Costa", 0.55,
-  "Marin", 0.54,
-  "Napa", 0.58,
-  "San Francisco", 0.27,
-  "San Mateo", 0.55,
-  "Santa Clara", 0.59,
-  "Solano", 0.62,
-  "Sonoma", 0.60,
-  "Stanislaus", 0.8,
-  "Merced", 0.8,
-  "San Joaquin", 0.8,
-  "Santa Cruz", 0.8,
-  "San Benito", 0.8
+  ~County, ~emis_factor_lb_per_km,
+  "Alameda", 0.30,
+  "Contra Costa", 0.34,
+  "Marin", 0.34,
+  "Napa", 0.36,
+  "San Francisco", 0.17,
+  "San Mateo", 0.35,
+  "Santa Clara", 0.37,
+  "Solano", 0.39,
+  "Sonoma", 0.38,
+  "Stanislaus", 0.4,
+  "Merced", 0.4,
+  "San Joaquin", 0.4,
+  "Santa Cruz", 0.4,
+  "San Benito", 0.4
 )
 emissions_tibble
 ```
 
 
 ```{r}
-mile_per_km <- 0.62
-
 flow_by_csa_city
 
 commute_flow_imbalance_by_city <-
@@ -987,10 +1022,10 @@ commute_flow_imbalance_by_city <-
     flow_from_city = sum(total_flow_from_tract, na.rm = TRUE),
     commute_length_to_city = weighted.mean(avg_km_to_tract, total_flow_to_tract, na.rm = TRUE),
     commute_length_from_city = weighted.mean(avg_km_from_tract, total_flow_from_tract, na.rm = TRUE),
-    emissions_per_mile = first(emis_factor_lb_per_mile)
+    emissions_per_km = first(emis_factor_lb_per_km)
   ) %>% 
   mutate(imbalance = flow_to_city - flow_from_city) %>% 
-  mutate(daily_commute_emissions = commute_length_to_city * mile_per_km * emissions_per_mile * imbalance * 2) %>% 
+  mutate(daily_commute_emissions = commute_length_to_city *emissions_per_km * imbalance * 2) %>% 
   mutate(annual_commute_emissions = daily_commute_emissions * 5 * 52) %>% 
   arrange(-imbalance)
 
