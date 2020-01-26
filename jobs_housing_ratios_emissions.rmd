@@ -820,12 +820,6 @@ bay_area_commutes %>%
 Next, let's observe the total inflows and outflows from each county. We can calculate the imbalance as well. A positive imbalance means more people commute to that county than from it. I'll refer to this as net inflow.
 
 ```{r}
-flow_data
-
-```
-
-
-```{r}
 flow_data %>% 
   group_by(County) %>% 
   summarize(total_flow_to_county = sum(total_flow_to_tract, na.rm = TRUE),
@@ -980,7 +974,7 @@ bay_area_commutes %>%
   summarize(flow_total = sum(FLOW))
 
 flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
-  summarize(flow_total = sum(FLOW))
+  summarize(flow_total = sum(FLOW, na.rm = TRUE))
 
 ```
 
@@ -1008,28 +1002,44 @@ emissions_tibble = tribble(
 emissions_tibble
 ```
 
-
+For calculating the imbalance by city (and emissions), we can drop commutes that start and end in the same city (won't contribute to imbalance )
 ```{r}
-flow_by_csa_city
+flow_by_csa_city_detailed
 
-commute_flow_imbalance_by_city <-
-  flow_by_csa_city %>% st_drop_geometry() %>% 
+commute_flow_into_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
   # group by community
-  left_join(emissions_tibble) %>% 
-  group_by(NAME, County) %>% 
+  left_join(emissions_tibble, by = c("origin_county" = "County")) %>% 
+  group_by(dest_city) %>% 
   summarize(
-    flow_to_city = sum(total_flow_to_tract, na.rm = TRUE),
-    flow_from_city = sum(total_flow_from_tract, na.rm = TRUE),
-    commute_length_to_city = weighted.mean(avg_km_to_tract, total_flow_to_tract, na.rm = TRUE),
-    commute_length_from_city = weighted.mean(avg_km_from_tract, total_flow_from_tract, na.rm = TRUE),
-    emissions_per_km = first(emis_factor_lb_per_km)
-  ) %>% 
-  mutate(imbalance = flow_to_city - flow_from_city) %>% 
-  mutate(daily_commute_emissions = commute_length_to_city *emissions_per_km * imbalance * 2) %>% 
-  mutate(annual_commute_emissions = daily_commute_emissions * 5 * 52) %>% 
-  arrange(-imbalance)
+    flow_into_city = sum(FLOW, na.rm = TRUE),
+    commute_to_city_km = weighted.mean(LENKM, FLOW, na.rm = TRUE),
+    emissions_lb_per_km = weighted.mean(emis_factor_lb_per_km, FLOW, na.rm = TRUE)
+  ) 
 
-commute_flow_imbalance_by_city
+commute_flow_leaving_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  group_by(origin_city) %>% 
+  summarize(
+    flow_leaving_city = sum(FLOW, na.rm = TRUE),
+    commute_leaving_city_km = weighted.mean(LENKM, FLOW, na.rm = TRUE),
+  )
+
+imbalance_and_emissions_city <-
+  commute_flow_into_city %>% 
+  left_join(commute_flow_leaving_city, by = c("dest_city" = "origin_city")) %>% 
+  rename(city = dest_city) %>% 
+  mutate(
+    imbalance = flow_into_city - flow_leaving_city, 
+    daily_commute_emissions_lb = commute_to_city_km * emissions_lb_per_km * imbalance * 2, 
+    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year
+  ) 
+
+commute_flow_into_city
+commute_flow_leaving_city
+imbalance_and_emissions_city
 ``` 
 
 Let's graph the commute imbalance versus the housing deficit for each city that we calculated previously. SF is excluded from the figure - otherwise, it would be impossible to distinguish most of the other communities.
@@ -1037,7 +1047,7 @@ Let's graph the commute imbalance versus the housing deficit for each city that 
 ```{r}
 deficit_imbalance <-
   deficit %>% st_drop_geometry() %>% 
-  left_join(commute_flow_imbalance_by_city, by = c("name" = "NAME")) %>% 
+  left_join(imbalance_and_emissions_city, by = c("name" = "city")) %>% 
   filter(name != "San Francisco") 
 
 ggplot(deficit_imbalance) +
@@ -1054,23 +1064,73 @@ ggplot(deficit_imbalance) +
 
 # Emissions Estimate
 
-Super Simplified Version
+Less Simplified Version 
+
 ```{r}
-commute_flow_imbalance_by_city %>% 
-  summarize(
-    total_annual_emissions = sum(annual_commute_emissions, na.rm = TRUE)
-  ) %>% 
-  arrange(-total_annual_emissions) %>% 
-  filter(total_annual_emissions > 0) %>% 
-  arrange(-total_annual_emissions) %>% 
-  summarize(
-    total_emissions_imbalance = sum(total_annual_emissions) 
-  )
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  summarize(annual_emissions_lb = sum(annual_commute_emissions_lb)) %>% 
+  mutate(annual_emissions_mt = annual_emissions_lb / 2204.6) 
+
+```
+
+Worst Cities 
+```{r}
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  mutate(annual_emissions_mt = annual_commute_emissions_lb / 2204.6) %>% 
+  arrange(-annual_emissions_mt) 
+
+```
+
+Total Imbalance from Job-Rich communities
+```{r}
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  summarize(total_imbalance = sum(imbalance))
 ```
 
 
+```{r, fig.height = 8}
+NYT_DEM <- "#1A80C4"
+NYT_REP <- "#CC3D41"
+light_blue <- "#bfefff"
+light_red <- "#FDB8A9"
+dark_red <- "#9C2A12"
 
-Less Simplified Version (TBD)
+
+city_jobs_imbalance <-
+  st_intersection(csa_counties, csa_cities %>% st_transform(crs = 4326)) %>% 
+  left_join(imbalance_and_emissions_city, by = c("NAME" = "city"))
+
+city_jobs_imbalance
+
+deficit %>% 
+  ggplot() +
+  geom_sf(aes(fill = NULL), data = csa_counties) +
+  geom_sf(aes(fill = NULL), color = "black", data = city_jobs_imbalance) +
+  geom_sf(aes(fill = imbalance), data = city_jobs_imbalance) +
+  coord_sf(ylim = c(36.75, 38.5),
+           xlim = c(-120.7, -122.7)) +
+  scale_fill_gradientn(
+    labels = scales::comma_format(accuracy = 1, suffix = " jobs"),
+    colors = c(NYT_DEM, light_blue, "white", NYT_REP, dark_red),
+    values = c(-10000, -1000, 5000, 50000, 100000) %>%
+      scales::rescale()
+  ) +
+  theme_minimal() +
+  labs(
+    fill = "Job Imbalance",
+    title = "San Francisco's job imbalance is by far the largest contributor to the region's housing shortage",
+    subtitle = "Outside of SF, Silicon Valley communities tend to have the largest job imbalances"
+  )
+
+city_jobs_imbalance %>% 
+  filter(NAME == "Santa Rosa")
+```
+
+
+OLD CODE
 
 I will take a simplified approach at estimating the emissions. I will assign an emissions per kilometer to each census tract, based on the county the tract lies within. The emissions estimate will be based on an average vehicle MPG (assumed to be the same for all counties), and the percentage of people within each county that commute by single-occupancy car.
 

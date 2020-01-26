@@ -893,7 +893,7 @@ inflows <-
 # To find the outflows, group by OFIPS
 outflows <-
   bay_area_commutes %>% 
-  mutate(total_trip_km = FLOW * LENKM) %>% 
+  mutate(total_trip_km = FLOW * LENKM) %>% # note, this includes commutes that start and end in same tract!
   group_by(OFIPS) %>% 
   summarize(
     total_flow_from_tract = sum(FLOW),
@@ -1020,26 +1020,6 @@ people commute to that county than from it. I’ll refer to this as net
 inflow.
 
 ``` r
-flow_data
-```
-
-    ## # A tibble: 1,923 x 9
-    ##    tract total_flow_to_t… avg_km_to_tract total_flow_from… avg_km_from_tra…
-    ##    <chr>            <dbl>           <dbl>            <dbl>            <dbl>
-    ##  1 0600…             1322            17.2             1364            14.5 
-    ##  2 0600…             2169            14.1             1169             9.56
-    ##  3 0600…             3427            12.2             2646            10.4 
-    ##  4 0600…             1313            10.1             2335             9.66
-    ##  5 0600…              657            11.0             2087            10.8 
-    ##  6 0600…              249            13.8              817            12.9 
-    ##  7 0600…             1422            15.3             1771            10.5 
-    ##  8 0600…             1351            15.4             1409            11.0 
-    ##  9 0600…              349            21.3             1270            10.4 
-    ## 10 0600…             3137            20.6             2755            11.0 
-    ## # … with 1,913 more rows, and 4 more variables: INTPTLAT <dbl>,
-    ## #   INTPTLONG <dbl>, county_code <dbl>, County <chr>
-
-``` r
 flow_data %>% 
   group_by(County) %>% 
   summarize(total_flow_to_county = sum(total_flow_to_tract, na.rm = TRUE),
@@ -1091,7 +1071,27 @@ inter_county_dest <-
     total_flow_into_county = sum(FLOW, na.rm = TRUE),
     avg_commute_to_county_km = weighted.mean(LENKM, FLOW, na.rm = TRUE)
   )
+
+flow_matrix_detailed
 ```
+
+    ## # A tibble: 128,793 x 20
+    ##    OFIPS DFIPS OSTFIPS OCTFIPS OTRFIPS DSTFIPS DCTFIPS DTRFIPS  FLOW   MOE
+    ##    <chr> <chr>   <dbl>   <dbl>   <dbl>   <dbl>   <dbl>   <dbl> <dbl> <dbl>
+    ##  1 0605… 0605…       6      55  201700       6      55  201700  2020   427
+    ##  2 0607… 0607…       6      75   61500       6      75   61500  1775   318
+    ##  3 0608… 0608…       6      81  613700       6      81  613700  1330   327
+    ##  4 0608… 0608…       6      85  513000       6      85  513000  1265   273
+    ##  5 0604… 0604…       6      47     402       6      47     402  1225   291
+    ##  6 0607… 0607…       6      75   61500       6      75   11700  1065   270
+    ##  7 0609… 0609…       6      99    3202       6      99    3202  1065   270
+    ##  8 0609… 0609…       6      95  253500       6      95  253500  1025   238
+    ##  9 0609… 0609…       6      99    3500       6      99    3500   995   229
+    ## 10 0608… 0608…       6      87  120900       6      87  120900   980   274
+    ## # … with 128,783 more rows, and 10 more variables: LENKM <dbl>,
+    ## #   ESTDIVMOE <dbl>, origin_lat <dbl>, origin_lon <dbl>,
+    ## #   origin_county_code <dbl>, origin_county <chr>, dest_lat <dbl>,
+    ## #   dest_lon <dbl>, dest_county_code <dbl>, dest_county <chr>
 
 Let’s also look at the commutes from each county
 
@@ -1167,7 +1167,7 @@ flow_matrix_detailed %>%
   )
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
 
 San Francisco has the highest net inflow, at 153,600 commutes, followed
 by Santa Clara County, with 89,627 commutes. On the opposite end of the
@@ -1196,7 +1196,7 @@ csa_cities_cleaned %>%
   theme_bw()
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-43-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
 
 Let’s join the flow data with the csa\_cities\_data. To ensure I account
 for all flows I will use the st\_nearest feature to identify the closest
@@ -1207,7 +1207,34 @@ csa_cities_cleaned_idx <-
   csa_cities_cleaned %>% 
   mutate(index = row_number())
 
-# running this next chunk takes a long time (2 mins ish)
+csa_cities_cleaned_idx
+```
+
+    ## Simple feature collection with 374 features and 21 fields
+    ## geometry type:  GEOMETRY
+    ## dimension:      XY
+    ## bbox:           xmin: -123.5331 ymin: 36.77672 xmax: -120.2436 ymax: 38.81954
+    ## epsg (SRID):    4326
+    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
+    ## # A tibble: 374 x 22
+    ##    FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
+    ##  * <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
+    ##  1 06097    Sonoma 06      14190   024094… 0614… Clov… Cloverd… 25   
+    ##  2 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
+    ##  3 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
+    ##  4 06095    Solano 06      19402   024103… 0619… Dixon Dixon c… 25   
+    ##  5 06095    Solano 06      60984   024109… 0660… Rio … Rio Vis… 25   
+    ##  6 06095    Solano 06      75630   024119… 0675… Suis… Suisun … 25   
+    ##  7 06097    Sonoma 06      62546   024109… 0662… Rohn… Rohnert… 25   
+    ##  8 06097    Sonoma 06      70770   024118… 0670… Seba… Sebasto… 25   
+    ##  9 06097    Sonoma 06      72646   024119… 0672… Sono… Sonoma … 25   
+    ## 10 06085    Santa… 06      44112   024129… 0644… Los … Los Gat… 43   
+    ## # … with 364 more rows, and 13 more variables: CLASSFP <chr>,
+    ## #   PCICBSA <chr>, PCINECTA <chr>, MTFCC <chr>, FUNCSTAT <chr>,
+    ## #   ALAND <dbl>, AWATER <dbl>, INTPTLAT <chr>, INTPTLON <chr>,
+    ## #   FIPSSTCO.1 <chr>, COUNTY.1 <chr>, geometry <GEOMETRY [°]>, index <int>
+
+``` r
 flow_data_idx <-
   flow_data %>% 
   mutate(index = st_nearest_feature(flow_data %>% st_as_sf(coords = c("INTPTLONG", "INTPTLAT"), crs = 4326), csa_cities_cleaned %>% st_as_sf))
@@ -1271,6 +1298,82 @@ flow_by_csa_city
     ## #   avg_km_from_tract <dbl>, INTPTLAT.y <dbl>, INTPTLONG <dbl>,
     ## #   county_code <dbl>, County <chr>
 
+``` r
+# New version, use flow_matrix_detailed! 
+csa_cities_cleaned_idx <-
+  csa_cities_cleaned %>% 
+  mutate(index = row_number())
+
+# running this next chunk takes a long time (2 mins ish)
+# find the origin and destination city index for each tract
+flow_data_origin_city <-
+  flow_matrix_detailed %>% 
+  mutate(origin_index = st_nearest_feature(flow_matrix_detailed %>%  st_as_sf(coords = c("origin_lon", "origin_lat"), crs = 4326), csa_cities_cleaned %>% st_as_sf)) %>% 
+  mutate(dest_index = st_nearest_feature(flow_matrix_detailed %>%  st_as_sf(coords = c("dest_lon", "dest_lat"), crs = 4326), csa_cities_cleaned %>% st_as_sf))
+```
+
+    ## although coordinates are longitude/latitude, st_nearest_feature assumes that they are planar
+    ## although coordinates are longitude/latitude, st_nearest_feature assumes that they are planar
+
+``` r
+flow_by_csa_city_detailed <-
+  csa_cities_cleaned_idx %>% 
+  rename(origin_city = NAME) %>% 
+  select(origin_city, index) %>% 
+  # join city data with flow data to get the origin city name
+  left_join(flow_data_origin_city, by = c("index" = "origin_index")) %>% 
+  # join the flow data with city data to get destination city name
+  left_join(csa_cities_cleaned_idx %>% rename(dest_city = NAME) %>% select(dest_city, index) %>% st_drop_geometry(), by = c("dest_index" = "index"))
+
+flow_by_csa_city_detailed
+```
+
+    ## Simple feature collection with 128906 features and 24 fields
+    ## geometry type:  GEOMETRY
+    ## dimension:      XY
+    ## bbox:           xmin: -123.5331 ymin: 36.77672 xmax: -120.2436 ymax: 38.81954
+    ## epsg (SRID):    4326
+    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
+    ## # A tibble: 128,906 x 25
+    ##    origin_city index                  geometry OFIPS DFIPS OSTFIPS OCTFIPS
+    ##    <chr>       <int>             <POLYGON [°]> <chr> <chr>   <dbl>   <dbl>
+    ##  1 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  2 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  3 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  4 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  5 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  6 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  7 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  8 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  9 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ## 10 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ## # … with 128,896 more rows, and 18 more variables: OTRFIPS <dbl>,
+    ## #   DSTFIPS <dbl>, DCTFIPS <dbl>, DTRFIPS <dbl>, FLOW <dbl>, MOE <dbl>,
+    ## #   LENKM <dbl>, ESTDIVMOE <dbl>, origin_lat <dbl>, origin_lon <dbl>,
+    ## #   origin_county_code <dbl>, origin_county <chr>, dest_lat <dbl>,
+    ## #   dest_lon <dbl>, dest_county_code <dbl>, dest_county <chr>,
+    ## #   dest_index <int>, dest_city <chr>
+
+``` r
+bay_area_commutes %>% 
+  summarize(flow_total = sum(FLOW))
+```
+
+    ## # A tibble: 1 x 1
+    ##   flow_total
+    ##        <dbl>
+    ## 1    3976435
+
+``` r
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  summarize(flow_total = sum(FLOW, na.rm = TRUE))
+```
+
+    ## # A tibble: 1 x 1
+    ##   flow_total
+    ##        <dbl>
+    ## 1    3976435
+
 Now, we can see the imbalance by city\! To ensure I account for all
 flows I will use the st\_nearest feature to identify the closest
 community to each census tract centerpoint.
@@ -1279,120 +1382,166 @@ Emissions Per Mile and Driving Mode Share
 
 ``` r
 emissions_tibble = tribble(
-  ~County, ~emis_factor_lb_per_mile,
-  "Alameda", 0.48,
-  "Contra Costa", 0.55,
-  "Marin", 0.54,
-  "Napa", 0.58,
-  "San Francisco", 0.27,
-  "San Mateo", 0.55,
-  "Santa Clara", 0.59,
-  "Solano", 0.62,
-  "Sonoma", 0.60,
-  "Stanislaus", 0.8,
-  "Merced", 0.8,
-  "San Joaquin", 0.8,
-  "Santa Cruz", 0.8,
-  "San Benito", 0.8
+  ~County, ~emis_factor_lb_per_km,
+  "Alameda", 0.30,
+  "Contra Costa", 0.34,
+  "Marin", 0.34,
+  "Napa", 0.36,
+  "San Francisco", 0.17,
+  "San Mateo", 0.35,
+  "Santa Clara", 0.37,
+  "Solano", 0.39,
+  "Sonoma", 0.38,
+  "Stanislaus", 0.4,
+  "Merced", 0.4,
+  "San Joaquin", 0.4,
+  "Santa Cruz", 0.4,
+  "San Benito", 0.4
 )
 emissions_tibble
 ```
 
     ## # A tibble: 14 x 2
-    ##    County        emis_factor_lb_per_mile
-    ##    <chr>                           <dbl>
-    ##  1 Alameda                         0.48 
-    ##  2 Contra Costa                    0.55 
-    ##  3 Marin                           0.54 
-    ##  4 Napa                            0.580
-    ##  5 San Francisco                   0.27 
-    ##  6 San Mateo                       0.55 
-    ##  7 Santa Clara                     0.59 
-    ##  8 Solano                          0.62 
-    ##  9 Sonoma                          0.6  
-    ## 10 Stanislaus                      0.8  
-    ## 11 Merced                          0.8  
-    ## 12 San Joaquin                     0.8  
-    ## 13 Santa Cruz                      0.8  
-    ## 14 San Benito                      0.8
+    ##    County        emis_factor_lb_per_km
+    ##    <chr>                         <dbl>
+    ##  1 Alameda                        0.3 
+    ##  2 Contra Costa                   0.34
+    ##  3 Marin                          0.34
+    ##  4 Napa                           0.36
+    ##  5 San Francisco                  0.17
+    ##  6 San Mateo                      0.35
+    ##  7 Santa Clara                    0.37
+    ##  8 Solano                         0.39
+    ##  9 Sonoma                         0.38
+    ## 10 Stanislaus                     0.4 
+    ## 11 Merced                         0.4 
+    ## 12 San Joaquin                    0.4 
+    ## 13 Santa Cruz                     0.4 
+    ## 14 San Benito                     0.4
+
+For calculating the imbalance by city (and emissions), we can drop
+commutes that start and end in the same city (won’t contribute to
+imbalance )
 
 ``` r
-mile_per_km <- 0.62
-
-flow_by_csa_city
+flow_by_csa_city_detailed
 ```
 
-    ## Simple feature collection with 2036 features and 30 fields
+    ## Simple feature collection with 128906 features and 24 fields
     ## geometry type:  GEOMETRY
     ## dimension:      XY
     ## bbox:           xmin: -123.5331 ymin: 36.77672 xmax: -120.2436 ymax: 38.81954
     ## epsg (SRID):    4326
     ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
-    ## # A tibble: 2,036 x 31
-    ##    FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
-    ##    <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
-    ##  1 06097    Sonoma 06      14190   024094… 0614… Clov… Cloverd… 25   
-    ##  2 06097    Sonoma 06      14190   024094… 0614… Clov… Cloverd… 25   
-    ##  3 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
-    ##  4 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
-    ##  5 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
-    ##  6 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
-    ##  7 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
-    ##  8 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
-    ##  9 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
-    ## 10 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
-    ## # … with 2,026 more rows, and 22 more variables: CLASSFP <chr>,
-    ## #   PCICBSA <chr>, PCINECTA <chr>, MTFCC <chr>, FUNCSTAT <chr>,
-    ## #   ALAND <dbl>, AWATER <dbl>, INTPTLAT.x <chr>, INTPTLON <chr>,
-    ## #   FIPSSTCO.1 <chr>, COUNTY.1 <chr>, geometry <GEOMETRY [°]>,
-    ## #   index <int>, tract <chr>, total_flow_to_tract <dbl>,
-    ## #   avg_km_to_tract <dbl>, total_flow_from_tract <dbl>,
-    ## #   avg_km_from_tract <dbl>, INTPTLAT.y <dbl>, INTPTLONG <dbl>,
-    ## #   county_code <dbl>, County <chr>
+    ## # A tibble: 128,906 x 25
+    ##    origin_city index                  geometry OFIPS DFIPS OSTFIPS OCTFIPS
+    ##    <chr>       <int>             <POLYGON [°]> <chr> <chr>   <dbl>   <dbl>
+    ##  1 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  2 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  3 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  4 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  5 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  6 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  7 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  8 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ##  9 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ## 10 Cloverdale      1 ((-123.0351 38.78701, -1… 0609… 0609…       6      97
+    ## # … with 128,896 more rows, and 18 more variables: OTRFIPS <dbl>,
+    ## #   DSTFIPS <dbl>, DCTFIPS <dbl>, DTRFIPS <dbl>, FLOW <dbl>, MOE <dbl>,
+    ## #   LENKM <dbl>, ESTDIVMOE <dbl>, origin_lat <dbl>, origin_lon <dbl>,
+    ## #   origin_county_code <dbl>, origin_county <chr>, dest_lat <dbl>,
+    ## #   dest_lon <dbl>, dest_county_code <dbl>, dest_county <chr>,
+    ## #   dest_index <int>, dest_city <chr>
 
 ``` r
-commute_flow_imbalance_by_city <-
-  flow_by_csa_city %>% st_drop_geometry() %>% 
+commute_flow_into_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
   # group by community
-  left_join(emissions_tibble) %>% 
-  group_by(NAME, County) %>% 
+  left_join(emissions_tibble, by = c("origin_county" = "County")) %>% 
+  group_by(dest_city) %>% 
   summarize(
-    flow_to_city = sum(total_flow_to_tract, na.rm = TRUE),
-    flow_from_city = sum(total_flow_from_tract, na.rm = TRUE),
-    commute_length_to_city = weighted.mean(avg_km_to_tract, total_flow_to_tract, na.rm = TRUE),
-    commute_length_from_city = weighted.mean(avg_km_from_tract, total_flow_from_tract, na.rm = TRUE),
-    emissions_per_mile = first(emis_factor_lb_per_mile)
-  ) %>% 
-  mutate(imbalance = flow_to_city - flow_from_city) %>% 
-  mutate(daily_commute_emissions = commute_length_to_city * mile_per_km * emissions_per_mile * imbalance * 2) %>% 
-  mutate(annual_commute_emissions = daily_commute_emissions * 5 * 52) %>% 
-  arrange(-imbalance)
+    flow_into_city = sum(FLOW, na.rm = TRUE),
+    commute_to_city_km = weighted.mean(LENKM, FLOW, na.rm = TRUE),
+    emissions_lb_per_km = weighted.mean(emis_factor_lb_per_km, FLOW, na.rm = TRUE)
+  ) 
+
+commute_flow_leaving_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  group_by(origin_city) %>% 
+  summarize(
+    flow_leaving_city = sum(FLOW, na.rm = TRUE),
+    commute_leaving_city_km = weighted.mean(LENKM, FLOW, na.rm = TRUE),
+  )
+
+imbalance_and_emissions_city <-
+  commute_flow_into_city %>% 
+  left_join(commute_flow_leaving_city, by = c("dest_city" = "origin_city")) %>% 
+  rename(city = dest_city) %>% 
+  mutate(
+    imbalance = flow_into_city - flow_leaving_city, 
+    daily_commute_emissions_lb = commute_to_city_km * emissions_lb_per_km * imbalance * 2, 
+    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year
+  ) 
+
+commute_flow_into_city
 ```
 
-    ## Joining, by = "County"
+    ## # A tibble: 261 x 4
+    ##    dest_city       flow_into_city commute_to_city_km emissions_lb_per_km
+    ##    <chr>                    <dbl>              <dbl>               <dbl>
+    ##  1 Alameda                  17207              22.3                0.309
+    ##  2 Alamo                     1419              17.7                0.340
+    ##  3 Albany                    2658              15.6                0.321
+    ##  4 Allendale                  268              32.6                0.377
+    ##  5 Alum Rock                 1385              11.0                0.368
+    ##  6 American Canyon           9078              20.9                0.371
+    ##  7 Amesti                     230               4.75               0.4  
+    ##  8 Angwin                    2338              30.5                0.362
+    ##  9 Antioch                  12305              17.9                0.340
+    ## 10 Aptos                     4828              12.5                0.398
+    ## # … with 251 more rows
 
 ``` r
-commute_flow_imbalance_by_city
+commute_flow_leaving_city
 ```
 
-    ## # A tibble: 370 x 10
-    ## # Groups:   NAME [337]
-    ##    NAME  County flow_to_city flow_from_city commute_length_…
-    ##    <chr> <chr>         <dbl>          <dbl>            <dbl>
-    ##  1 San … San F…       582779         429179             15.0
-    ##  2 Sant… Santa…        92537          53620             16.8
-    ##  3 Stan… Santa…        41972           7760             19.0
-    ##  4 Moun… Santa…        65845          37767             18.8
-    ##  5 Waln… Contr…        55579          30833             15.5
-    ##  6 Berk… Alame…        71753          49905             12.6
-    ##  7 Plea… Alame…        49218          28060             21.9
-    ##  8 Palo… Santa…        47637          28199             18.0
-    ##  9 Oakl… Alame…       192933         176578             17.3
-    ## 10 Mill… San M…        25724           9461             24.0
-    ## # … with 360 more rows, and 5 more variables:
-    ## #   commute_length_from_city <dbl>, emissions_per_mile <dbl>,
-    ## #   imbalance <dbl>, daily_commute_emissions <dbl>,
-    ## #   annual_commute_emissions <dbl>
+    ## # A tibble: 261 x 3
+    ##    origin_city     flow_leaving_city commute_leaving_city_km
+    ##    <chr>                       <dbl>                   <dbl>
+    ##  1 Alameda                     25577                    15.9
+    ##  2 Alamo                        4455                    22.0
+    ##  3 Albany                       6562                    14.5
+    ##  4 Allendale                    1501                    27.1
+    ##  5 Alum Rock                    5987                    16.8
+    ##  6 American Canyon              6946                    27.4
+    ##  7 Amesti                        767                    12.0
+    ##  8 Angwin                       1900                    32.6
+    ##  9 Antioch                     32314                    31.9
+    ## 10 Aptos                        4582                    18.0
+    ## # … with 251 more rows
+
+``` r
+imbalance_and_emissions_city
+```
+
+    ## # A tibble: 261 x 9
+    ##    city  flow_into_city commute_to_city… emissions_lb_pe… flow_leaving_ci…
+    ##    <chr>          <dbl>            <dbl>            <dbl>            <dbl>
+    ##  1 Alam…          17207            22.3             0.309            25577
+    ##  2 Alamo           1419            17.7             0.340             4455
+    ##  3 Alba…           2658            15.6             0.321             6562
+    ##  4 Alle…            268            32.6             0.377             1501
+    ##  5 Alum…           1385            11.0             0.368             5987
+    ##  6 Amer…           9078            20.9             0.371             6946
+    ##  7 Ames…            230             4.75            0.4                767
+    ##  8 Angw…           2338            30.5             0.362             1900
+    ##  9 Anti…          12305            17.9             0.340            32314
+    ## 10 Aptos           4828            12.5             0.398             4582
+    ## # … with 251 more rows, and 4 more variables:
+    ## #   commute_leaving_city_km <dbl>, imbalance <dbl>,
+    ## #   daily_commute_emissions_lb <dbl>, annual_commute_emissions_lb <dbl>
 
 Let’s graph the commute imbalance versus the housing deficit for each
 city that we calculated previously. SF is excluded from the figure -
@@ -1402,7 +1551,7 @@ communities.
 ``` r
 deficit_imbalance <-
   deficit %>% st_drop_geometry() %>% 
-  left_join(commute_flow_imbalance_by_city, by = c("name" = "NAME")) %>% 
+  left_join(imbalance_and_emissions_city, by = c("name" = "city")) %>% 
   filter(name != "San Francisco") 
 
 ggplot(deficit_imbalance) +
@@ -1417,31 +1566,165 @@ ggplot(deficit_imbalance) +
   )
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-47-1.png)<!-- -->
+    ## Warning: Removed 13 rows containing missing values (geom_point).
+
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-48-1.png)<!-- -->
 
 # Emissions Estimate
 
-Super Simplified Version
+Less Simplified Version
 
 ``` r
-commute_flow_imbalance_by_city %>% 
-  summarize(
-    total_annual_emissions = sum(annual_commute_emissions, na.rm = TRUE)
-  ) %>% 
-  arrange(-total_annual_emissions) %>% 
-  filter(total_annual_emissions > 0) %>% 
-  arrange(-total_annual_emissions) %>% 
-  summarize(
-    total_emissions_imbalance = sum(total_annual_emissions) 
-  )
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  summarize(annual_emissions_lb = sum(annual_commute_emissions_lb)) %>% 
+  mutate(annual_emissions_mt = annual_emissions_lb / 2204.6) 
+```
+
+    ## # A tibble: 1 x 2
+    ##   annual_emissions_lb annual_emissions_mt
+    ##                 <dbl>               <dbl>
+    ## 1         2224155388.            1008870.
+
+Worst Cities
+
+``` r
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  mutate(annual_emissions_mt = annual_commute_emissions_lb / 2204.6) %>% 
+  arrange(-annual_emissions_mt) 
+```
+
+    ## # A tibble: 75 x 10
+    ##    city  flow_into_city commute_to_city… emissions_lb_pe… flow_leaving_ci…
+    ##    <chr>          <dbl>            <dbl>            <dbl>            <dbl>
+    ##  1 San …         252356             29.0            0.337            98756
+    ##  2 Sant…          77917             19.5            0.359            39000
+    ##  3 Stan…          37712             21.0            0.346             3500
+    ##  4 Moun…          55184             22.0            0.348            27106
+    ##  5 Plea…          39609             26.7            0.327            18451
+    ##  6 Waln…          44725             18.8            0.336            19979
+    ##  7 Palo…          39958             21.1            0.344            20520
+    ##  8 Oakl…         114133             26.2            0.313            97778
+    ##  9 Mill…          24055             25.6            0.316             7792
+    ## 10 Berk…          47792             18.0            0.311            25944
+    ## # … with 65 more rows, and 5 more variables:
+    ## #   commute_leaving_city_km <dbl>, imbalance <dbl>,
+    ## #   daily_commute_emissions_lb <dbl>, annual_commute_emissions_lb <dbl>,
+    ## #   annual_emissions_mt <dbl>
+
+Total Imbalance from Job-Rich communities
+
+``` r
+imbalance_and_emissions_city %>% 
+  filter(annual_commute_emissions_lb > 0) %>% 
+  summarize(total_imbalance = sum(imbalance))
 ```
 
     ## # A tibble: 1 x 1
-    ##   total_emissions_imbalance
-    ##                       <dbl>
-    ## 1               1576740115.
+    ##   total_imbalance
+    ##             <dbl>
+    ## 1          578233
 
-Less Simplified Version (TBD)
+``` r
+NYT_DEM <- "#1A80C4"
+NYT_REP <- "#CC3D41"
+light_blue <- "#bfefff"
+light_red <- "#FDB8A9"
+dark_red <- "#9C2A12"
+
+
+city_jobs_imbalance <-
+  st_intersection(csa_counties, csa_cities %>% st_transform(crs = 4326)) %>% 
+  left_join(imbalance_and_emissions_city, by = c("NAME" = "city"))
+```
+
+    ## although coordinates are longitude/latitude, st_intersection assumes that they are planar
+
+    ## Warning: attribute variables are assumed to be spatially constant
+    ## throughout all geometries
+
+``` r
+city_jobs_imbalance
+```
+
+    ## Simple feature collection with 374 features and 28 fields
+    ## geometry type:  GEOMETRY
+    ## dimension:      XY
+    ## bbox:           xmin: -123.5331 ymin: 36.77672 xmax: -120.2436 ymax: 38.81954
+    ## epsg (SRID):    4326
+    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
+    ## # A tibble: 374 x 29
+    ##    FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
+    ##    <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
+    ##  1 06097    Sonoma 06      14190   024094… 0614… Clov… Cloverd… 25   
+    ##  2 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
+    ##  3 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
+    ##  4 06095    Solano 06      19402   024103… 0619… Dixon Dixon c… 25   
+    ##  5 06095    Solano 06      60984   024109… 0660… Rio … Rio Vis… 25   
+    ##  6 06095    Solano 06      75630   024119… 0675… Suis… Suisun … 25   
+    ##  7 06097    Sonoma 06      62546   024109… 0662… Rohn… Rohnert… 25   
+    ##  8 06097    Sonoma 06      70770   024118… 0670… Seba… Sebasto… 25   
+    ##  9 06097    Sonoma 06      72646   024119… 0672… Sono… Sonoma … 25   
+    ## 10 06085    Santa… 06      44112   024129… 0644… Los … Los Gat… 43   
+    ## # … with 364 more rows, and 20 more variables: CLASSFP <chr>,
+    ## #   PCICBSA <chr>, PCINECTA <chr>, MTFCC <chr>, FUNCSTAT <chr>,
+    ## #   ALAND <dbl>, AWATER <dbl>, INTPTLAT <chr>, INTPTLON <chr>,
+    ## #   FIPSSTCO.1 <chr>, COUNTY.1 <chr>, geometry <GEOMETRY [°]>,
+    ## #   flow_into_city <dbl>, commute_to_city_km <dbl>,
+    ## #   emissions_lb_per_km <dbl>, flow_leaving_city <dbl>,
+    ## #   commute_leaving_city_km <dbl>, imbalance <dbl>,
+    ## #   daily_commute_emissions_lb <dbl>, annual_commute_emissions_lb <dbl>
+
+``` r
+deficit %>% 
+  ggplot() +
+  geom_sf(aes(fill = NULL), data = csa_counties) +
+  geom_sf(aes(fill = NULL), color = "black", data = city_jobs_imbalance) +
+  geom_sf(aes(fill = imbalance), data = city_jobs_imbalance) +
+  coord_sf(ylim = c(36.75, 38.5),
+           xlim = c(-120.7, -122.7)) +
+  scale_fill_gradientn(
+    labels = scales::comma_format(accuracy = 1, suffix = " jobs"),
+    colors = c(NYT_DEM, light_blue, "white", NYT_REP, dark_red),
+    values = c(-10000, -1000, 5000, 50000, 100000) %>%
+      scales::rescale()
+  ) +
+  theme_minimal() +
+  labs(
+    fill = "Job Imbalance",
+    title = "San Francisco's job imbalance is by far the largest contributor to the region's housing shortage",
+    subtitle = "Outside of SF, Silicon Valley communities tend to have the largest job imbalances"
+  )
+```
+
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+
+``` r
+city_jobs_imbalance %>% 
+  filter(NAME == "Santa Rosa")
+```
+
+    ## Simple feature collection with 1 feature and 28 fields
+    ## geometry type:  MULTIPOLYGON
+    ## dimension:      XY
+    ## bbox:           xmin: -122.8345 ymin: 38.36429 xmax: -122.5701 ymax: 38.50818
+    ## epsg (SRID):    4326
+    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
+    ## # A tibble: 1 x 29
+    ##   FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
+    ## * <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
+    ## 1 06097    Sonoma 06      70098   024118… 0670… Sant… Santa R… 25   
+    ## # … with 20 more variables: CLASSFP <chr>, PCICBSA <chr>, PCINECTA <chr>,
+    ## #   MTFCC <chr>, FUNCSTAT <chr>, ALAND <dbl>, AWATER <dbl>,
+    ## #   INTPTLAT <chr>, INTPTLON <chr>, FIPSSTCO.1 <chr>, COUNTY.1 <chr>,
+    ## #   geometry <MULTIPOLYGON [°]>, flow_into_city <dbl>,
+    ## #   commute_to_city_km <dbl>, emissions_lb_per_km <dbl>,
+    ## #   flow_leaving_city <dbl>, commute_leaving_city_km <dbl>,
+    ## #   imbalance <dbl>, daily_commute_emissions_lb <dbl>,
+    ## #   annual_commute_emissions_lb <dbl>
+
+OLD CODE
 
 I will take a simplified approach at estimating the emissions. I will
 assign an emissions per kilometer to each census tract, based on the
@@ -1456,7 +1739,7 @@ flow_by_csa_city %>%
   geom_sf()
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
 
 ``` r
 flow_data %>% 
