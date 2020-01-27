@@ -815,6 +815,7 @@ bay_area_commutes %>%
     title = sprintf("Mean Commute Distance: %1$s km", round(mean_length, 1)),
     subtitle = sprintf("Median Commute Distance: %1$s km", round(median_length, 1)) 
   )
+
 ```
 
 Next, let's observe the total inflows and outflows from each county. We can calculate the imbalance as well. A positive imbalance means more people commute to that county than from it. I'll refer to this as net inflow.
@@ -901,6 +902,7 @@ flow_matrix_detailed %>%
     title = sprintf("Mean Commute Distance: %1$s km", round(mean_distance_inter_county, 1)),
     subtitle = sprintf("Median Commute Distance: %1$s km", round(median_distance_inter_county, 1)) 
   )
+
 ```
 
 
@@ -970,10 +972,10 @@ flow_by_csa_city_detailed
 
 
 ```{r}
-bay_area_commutes %>% 
-  summarize(flow_total = sum(FLOW))
+
 
 flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
   summarize(flow_total = sum(FLOW, na.rm = TRUE))
 
 ```
@@ -1034,13 +1036,46 @@ imbalance_and_emissions_city <-
   mutate(
     imbalance = flow_into_city - flow_leaving_city, 
     daily_commute_emissions_lb = commute_to_city_km * emissions_lb_per_km * imbalance * 2, 
-    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year
+    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year, and 5 days per workweek
   ) 
 
 commute_flow_into_city
 commute_flow_leaving_city
 imbalance_and_emissions_city
 ``` 
+
+Let's make the same distribution plot as we did for commute lengths and commute lengths that are inter-county but only for commutes that cross city boundaries. We expect the mean and median distribution to be somewhere in between the previous values.
+```{r}
+mean_distance_inter_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  summarize(
+    distance = weighted.mean(LENKM, FLOW)
+  )
+
+median_distance_inter_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  summarize(
+    median_length = median(rep(LENKM, times = FLOW))
+  )
+
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  ggplot(aes(x = LENKM, weight = FLOW)) +
+  geom_histogram(binwidth = 3) +
+  scale_y_continuous(
+    breaks = seq(0, 250000, by = 50000),
+    labels = scales::comma_format(accuracy = 1)
+  ) +
+  theme_bw() +
+  labs(
+    x = "Commute Distance [km]",
+    y = "Number of Commuters",
+    title = sprintf("Mean Commute Distance: %1$s km", round(mean_distance_inter_city, 1)),
+    subtitle = sprintf("Median Commute Distance: %1$s km", round(median_distance_inter_city, 1)) 
+  )
+```
 
 Let's graph the commute imbalance versus the housing deficit for each city that we calculated previously. SF is excluded from the figure - otherwise, it would be impossible to distinguish most of the other communities.
 
@@ -1063,6 +1098,12 @@ ggplot(deficit_imbalance) +
 ``` 
 
 # Emissions Estimate
+
+```{r}
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(dest_city == "San Francisco") %>% 
+  summarize(sum = sum(FLOW))
+```
 
 Less Simplified Version 
 
@@ -1091,7 +1132,7 @@ imbalance_and_emissions_city %>%
 ```
 
 
-```{r, fig.height = 8}
+```{r, fig.height = 10, fig.width = 10}
 NYT_DEM <- "#1A80C4"
 NYT_REP <- "#CC3D41"
 light_blue <- "#bfefff"
@@ -1103,7 +1144,6 @@ city_jobs_imbalance <-
   st_intersection(csa_counties, csa_cities %>% st_transform(crs = 4326)) %>% 
   left_join(imbalance_and_emissions_city, by = c("NAME" = "city"))
 
-city_jobs_imbalance
 
 deficit %>% 
   ggplot() +
@@ -1125,8 +1165,6 @@ deficit %>%
     subtitle = "Outside of SF, Silicon Valley communities tend to have the largest job imbalances"
   )
 
-city_jobs_imbalance %>% 
-  filter(NAME == "Santa Rosa")
 ```
 
 

@@ -1355,24 +1355,15 @@ flow_by_csa_city_detailed
     ## #   dest_index <int>, dest_city <chr>
 
 ``` r
-bay_area_commutes %>% 
-  summarize(flow_total = sum(FLOW))
-```
-
-    ## # A tibble: 1 x 1
-    ##   flow_total
-    ##        <dbl>
-    ## 1    3976435
-
-``` r
 flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
   summarize(flow_total = sum(FLOW, na.rm = TRUE))
 ```
 
     ## # A tibble: 1 x 1
     ##   flow_total
     ##        <dbl>
-    ## 1    3976435
+    ## 1    2429282
 
 Now, we can see the imbalance by city\! To ensure I account for all
 flows I will use the st\_nearest feature to identify the closest
@@ -1482,7 +1473,7 @@ imbalance_and_emissions_city <-
   mutate(
     imbalance = flow_into_city - flow_leaving_city, 
     daily_commute_emissions_lb = commute_to_city_km * emissions_lb_per_km * imbalance * 2, 
-    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year
+    annual_commute_emissions_lb = daily_commute_emissions_lb * 5 * 48  # assume 4 weeks off per year, and 5 days per workweek
   ) 
 
 commute_flow_into_city
@@ -1543,6 +1534,45 @@ imbalance_and_emissions_city
     ## #   commute_leaving_city_km <dbl>, imbalance <dbl>,
     ## #   daily_commute_emissions_lb <dbl>, annual_commute_emissions_lb <dbl>
 
+Let’s make the same distribution plot as we did for commute lengths and
+commute lengths that are inter-county but only for commutes that cross
+city boundaries. We expect the mean and median distribution to be
+somewhere in between the previous values.
+
+``` r
+mean_distance_inter_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  summarize(
+    distance = weighted.mean(LENKM, FLOW)
+  )
+
+median_distance_inter_city <-
+  flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  summarize(
+    median_length = median(rep(LENKM, times = FLOW))
+  )
+
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(origin_city != dest_city) %>% 
+  ggplot(aes(x = LENKM, weight = FLOW)) +
+  geom_histogram(binwidth = 3) +
+  scale_y_continuous(
+    breaks = seq(0, 250000, by = 50000),
+    labels = scales::comma_format(accuracy = 1)
+  ) +
+  theme_bw() +
+  labs(
+    x = "Commute Distance [km]",
+    y = "Number of Commuters",
+    title = sprintf("Mean Commute Distance: %1$s km", round(mean_distance_inter_city, 1)),
+    subtitle = sprintf("Median Commute Distance: %1$s km", round(median_distance_inter_city, 1)) 
+  )
+```
+
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-48-1.png)<!-- -->
+
 Let’s graph the commute imbalance versus the housing deficit for each
 city that we calculated previously. SF is excluded from the figure -
 otherwise, it would be impossible to distinguish most of the other
@@ -1568,9 +1598,20 @@ ggplot(deficit_imbalance) +
 
     ## Warning: Removed 13 rows containing missing values (geom_point).
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-48-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
 
 # Emissions Estimate
+
+``` r
+flow_by_csa_city_detailed %>% st_drop_geometry() %>% 
+  filter(dest_city == "San Francisco") %>% 
+  summarize(sum = sum(FLOW))
+```
+
+    ## # A tibble: 1 x 1
+    ##      sum
+    ##    <dbl>
+    ## 1 582779
 
 Less Simplified Version
 
@@ -1645,38 +1686,6 @@ city_jobs_imbalance <-
     ## throughout all geometries
 
 ``` r
-city_jobs_imbalance
-```
-
-    ## Simple feature collection with 374 features and 28 fields
-    ## geometry type:  GEOMETRY
-    ## dimension:      XY
-    ## bbox:           xmin: -123.5331 ymin: 36.77672 xmax: -120.2436 ymax: 38.81954
-    ## epsg (SRID):    4326
-    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
-    ## # A tibble: 374 x 29
-    ##    FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
-    ##    <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
-    ##  1 06097    Sonoma 06      14190   024094… 0614… Clov… Cloverd… 25   
-    ##  2 06097    Sonoma 06      16560   024102… 0616… Cota… Cotati … 25   
-    ##  3 06095    Solano 06      05290   024098… 0605… Beni… Benicia… 25   
-    ##  4 06095    Solano 06      19402   024103… 0619… Dixon Dixon c… 25   
-    ##  5 06095    Solano 06      60984   024109… 0660… Rio … Rio Vis… 25   
-    ##  6 06095    Solano 06      75630   024119… 0675… Suis… Suisun … 25   
-    ##  7 06097    Sonoma 06      62546   024109… 0662… Rohn… Rohnert… 25   
-    ##  8 06097    Sonoma 06      70770   024118… 0670… Seba… Sebasto… 25   
-    ##  9 06097    Sonoma 06      72646   024119… 0672… Sono… Sonoma … 25   
-    ## 10 06085    Santa… 06      44112   024129… 0644… Los … Los Gat… 43   
-    ## # … with 364 more rows, and 20 more variables: CLASSFP <chr>,
-    ## #   PCICBSA <chr>, PCINECTA <chr>, MTFCC <chr>, FUNCSTAT <chr>,
-    ## #   ALAND <dbl>, AWATER <dbl>, INTPTLAT <chr>, INTPTLON <chr>,
-    ## #   FIPSSTCO.1 <chr>, COUNTY.1 <chr>, geometry <GEOMETRY [°]>,
-    ## #   flow_into_city <dbl>, commute_to_city_km <dbl>,
-    ## #   emissions_lb_per_km <dbl>, flow_leaving_city <dbl>,
-    ## #   commute_leaving_city_km <dbl>, imbalance <dbl>,
-    ## #   daily_commute_emissions_lb <dbl>, annual_commute_emissions_lb <dbl>
-
-``` r
 deficit %>% 
   ggplot() +
   geom_sf(aes(fill = NULL), data = csa_counties) +
@@ -1698,31 +1707,7 @@ deficit %>%
   )
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
-
-``` r
-city_jobs_imbalance %>% 
-  filter(NAME == "Santa Rosa")
-```
-
-    ## Simple feature collection with 1 feature and 28 fields
-    ## geometry type:  MULTIPOLYGON
-    ## dimension:      XY
-    ## bbox:           xmin: -122.8345 ymin: 38.36429 xmax: -122.5701 ymax: 38.50818
-    ## epsg (SRID):    4326
-    ## proj4string:    +proj=longlat +datum=WGS84 +no_defs
-    ## # A tibble: 1 x 29
-    ##   FIPSSTCO COUNTY STATEFP PLACEFP PLACENS GEOID NAME  NAMELSAD LSAD 
-    ## * <chr>    <chr>  <chr>   <chr>   <chr>   <chr> <chr> <chr>    <chr>
-    ## 1 06097    Sonoma 06      70098   024118… 0670… Sant… Santa R… 25   
-    ## # … with 20 more variables: CLASSFP <chr>, PCICBSA <chr>, PCINECTA <chr>,
-    ## #   MTFCC <chr>, FUNCSTAT <chr>, ALAND <dbl>, AWATER <dbl>,
-    ## #   INTPTLAT <chr>, INTPTLON <chr>, FIPSSTCO.1 <chr>, COUNTY.1 <chr>,
-    ## #   geometry <MULTIPOLYGON [°]>, flow_into_city <dbl>,
-    ## #   commute_to_city_km <dbl>, emissions_lb_per_km <dbl>,
-    ## #   flow_leaving_city <dbl>, commute_leaving_city_km <dbl>,
-    ## #   imbalance <dbl>, daily_commute_emissions_lb <dbl>,
-    ## #   annual_commute_emissions_lb <dbl>
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-54-1.png)<!-- -->
 
 OLD CODE
 
@@ -1739,7 +1724,7 @@ flow_by_csa_city %>%
   geom_sf()
 ```
 
-![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
+![](jobs_housing_ratios_emissions_files/figure-gfm/unnamed-chunk-55-1.png)<!-- -->
 
 ``` r
 flow_data %>% 
